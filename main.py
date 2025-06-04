@@ -91,3 +91,4 @@ async def take_order(message: types.Message):
     taken_orders[message.from_user.id] = order
     orders.pop(index)
     await message.answer("✅ Ты взял заказ. Заказчик будет уведомлён (чат пока в разработке).")
+    
