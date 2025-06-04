@@ -39,9 +39,7 @@ async def start(message: Message, state: FSMContext):
         await message.answer("Привет! Для начала работы пройди регистрацию.Напиши своё имя и фамилию:")
         await state.set_state(Registration.name)
     else:
-        await message.answer("С возвращением! Выбери действие:
-1. Разместить заказ
-2. Посмотреть заказы")
+        await message.answer("С возвращением! Выбери действие: 1. Разместить заказ 2. Посмотреть заказы")
 
 @dp.message(Registration.name)
 async def reg_name(message: Message, state: FSMContext):
