@@ -112,10 +112,7 @@ async def show_orders(message: Message):
         await message.answer("Свободных заказов пока нет.")
         return
     for order in available_orders:
-      await message.answer(f"<b>{order['title']}</b>", parse_mode="HTML")
-
-
-Напиши 'взять {order['title']}' чтобы взять этот заказ")
+     await message.answer(f"Напиши \"взять {order['title']}\" чтобы взять этот заказ")
 
 @dp.message(F.text.lower().startswith("взять "))
 async def take_order(message: Message):
