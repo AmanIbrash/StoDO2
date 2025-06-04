@@ -55,8 +55,15 @@ async def reg_name(message: Message, state: FSMContext):
 @dp.message(Registration.university)
 async def reg_university(message: Message, state: FSMContext):
     await state.update_data(university=message.text)
-    await message.answer("Ты хочешь быть заказчиком, исполнителем или обоими?
-(Напиши: заказчик / исполнитель / оба)")
+    await message.answer(
+    """
+Ты хочешь быть:
+1. Заказчиком
+2. Исполнителем
+3. Обоими
+"""
+)
+
     await state.set_state(Registration.role)
 
 @dp.message(Registration.role)
