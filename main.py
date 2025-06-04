@@ -112,8 +112,8 @@ async def show_orders(message: Message):
         await message.answer("Свободных заказов пока нет.")
         return
     for order in available_orders:
-        await message.answer(f"<b>{order['title']}</b>
-{order['description']}
+      await message.answer(f"<b>{order['title']}</b>", parse_mode="HTML")
+
 
 Напиши 'взять {order['title']}' чтобы взять этот заказ")
 
