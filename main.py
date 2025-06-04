@@ -9,7 +9,7 @@ import sqlite3
 logging.basicConfig(level=logging.INFO)
 
 # Замени "YOUR_BOT_TOKEN" на токен от @BotFather
-API_TOKEN = 'YOUR_BOT_TOKEN'
+API_TOKEN = '7641233572:AAE-Zc5luR1OmPZuEAJ1okElewpkUXEVJ4c'
 
 # Инициализация бота и диспетчера
 bot = Bot(token=API_TOKEN)
