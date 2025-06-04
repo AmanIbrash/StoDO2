@@ -1,94 +1,237 @@
-
 import logging
-import os
-from aiogram import Bot, Dispatcher, executor, types
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram import Bot, Dispatcher, types, executor
 from aiogram.dispatcher import FSMContext
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from dotenv import load_dotenv
+import sqlite3
 
-load_dotenv()
-
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-if not BOT_TOKEN:
-    raise ValueError("Нет BOT_TOKEN в .env файле")
-
+# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher(bot, storage=MemoryStorage())
+# Замени "YOUR_BOT_TOKEN" на токен от @BotFather
+API_TOKEN = 'YOUR_BOT_TOKEN'
 
-users = {}
-orders = []
-taken_orders = {}
+# Инициализация бота и диспетчера
+bot = Bot(token=API_TOKEN)
+storage = MemoryStorage()
+dp = Dispatcher(bot, storage=storage)
 
-class Register(StatesGroup):
-    waiting_for_info = State()
+# Подключение к SQLite
+conn = sqlite3.connect('studo.db')
+cursor = conn.cursor()
 
-class Order(StatesGroup):
-    waiting_for_description = State()
+# Создание таблиц, если их нет
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tg_id INTEGER UNIQUE,
+    name TEXT,
+    university TEXT,
+    specialty TEXT,
+    group_name TEXT,
+    year INTEGER
+)
+''')
 
-@dp.message_handler(commands=["start"])
-async def cmd_start(message: types.Message):
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    title TEXT,
+    description TEXT,
+    price INTEGER,
+    deadline TEXT,
+    status TEXT DEFAULT 'active',
+    FOREIGN KEY (user_id) REFERENCES users (tg_id)
+)
+''')
+conn.commit()
+
+# States для регистрации и создания заказа
+class Registration(StatesGroup):
+    name = State()
+    university = State()
+    specialty = State()
+    group = State()
+    year = State()
+
+class CreateOrder(StatesGroup):
+    title = State()
+    description = State()
+    price = State()
+    deadline = State()
+
+# Команда /start
+@dp.message_handler(commands=['start'])
+async def start(message: types.Message):
     user_id = message.from_user.id
-    if user_id not in users:
-        await message.answer(
-            "Привет! 👋\n\nПеред тем как начать пользоваться ботом, нужно пройти быструю регистрацию. "
-            "Это поможет сделать сервис безопасным и удобным для всех.\n\n"
-            "Пожалуйста, отправь в одном сообщении:\n\n"
-            "🧑‍🎓 Имя и фамилию\n🏫 Место учёбы и специальность\n\n"
-            "👤 Пример: Арстангалиев Аман, КАЗГАСА, Архитектура"
-        )
-        await Register.waiting_for_info.set()
+    cursor.execute('SELECT * FROM users WHERE tg_id = ?', (user_id,))
+    user = cursor.fetchone()
+
+    if user:
+        await message.answer("👋 Привет! Ты уже зарегистрирован. Используй /new_order, чтобы создать заказ, или /orders, чтобы просмотреть заказы.")
     else:
-        await message.answer("Ты уже зарегистрирован! Выбирай действие:\n📝 /neworder — создать заказ\n📋 /orders — посмотреть заказы")
+        await Registration.name.set()
+        await message.answer("👋 Привет! Давай зарегистрируем тебя.\nВведи своё **ФИО**:")
 
-@dp.message_handler(state=Register.waiting_for_info)
-async def process_registration(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
-    users[user_id] = message.text
-    await message.answer("Отлично, регистрация завершена ✅\n\nТеперь ты можешь:\n— 📝 Создавать заказы (/neworder)\n— 📋 Смотреть заказы (/orders)")
+# Регистрация: ФИО
+@dp.message_handler(state=Registration.name)
+async def process_name(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['name'] = message.text
+
+    await Registration.next()
+    await message.answer("🎓 В каком **университете** ты учишься?")
+
+# Регистрация: университет
+@dp.message_handler(state=Registration.university)
+async def process_university(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['university'] = message.text
+
+    await Registration.next()
+    await message.answer("📚 Какая у тебя **специальность**?")
+
+# Регистрация: специальность
+@dp.message_handler(state=Registration.specialty)
+async def process_specialty(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['specialty'] = message.text
+
+    await Registration.next()
+    await message.answer("👥 В какой **группе** ты учишься?")
+
+# Регистрация: группа
+@dp.message_handler(state=Registration.group)
+async def process_group(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['group'] = message.text
+
+    await Registration.next()
+    await message.answer("📆 На каком **курсе** ты учишься? (1, 2, 3, ...)")
+
+# Регистрация: курс
+@dp.message_handler(state=Registration.year)
+async def process_year(message: types.Message, state: FSMContext):
+    try:
+        year = int(message.text)
+    except ValueError:
+        await message.answer("❌ Введи число (1, 2, 3, ...)")
+        return
+
+    async with state.proxy() as data:
+        data['year'] = year
+        cursor.execute('''
+        INSERT INTO users (tg_id, name, university, specialty, group_name, year)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ''', (message.from_user.id, data['name'], data['university'], data['specialty'], data['group'], data['year']))
+        conn.commit()
+
     await state.finish()
+    await message.answer("✅ Регистрация завершена! Теперь ты можешь создавать заказы (/new_order) или просматривать доступные (/orders).")
 
-@dp.message_handler(commands=["neworder"])
+# Команда /new_order - создание заказа
+@dp.message_handler(commands=['new_order'])
 async def new_order(message: types.Message):
-    if message.from_user.id not in users:
-        await message.answer("Сначала нужно зарегистрироваться. Напиши /start")
-        return
-    await message.answer("✍️ Введите описание заказа:")
-    await Order.waiting_for_description.set()
+    await CreateOrder.title.set()
+    await message.answer("🏗 Введи **название** заказа:")
 
-@dp.message_handler(state=Order.waiting_for_description)
-async def process_order(message: types.Message, state: FSMContext):
-    orders.append({"user_id": message.from_user.id, "text": message.text})
-    await message.answer("✅ Заказ создан и доступен для исполнителей.")
+# Создание заказа: название
+@dp.message_handler(state=CreateOrder.title)
+async def process_order_title(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['title'] = message.text
+
+    await CreateOrder.next()
+    await message.answer("📝 Напиши **описание** заказа:")
+
+# Создание заказа: описание
+@dp.message_handler(state=CreateOrder.description)
+async def process_order_description(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['description'] = message.text
+
+    await CreateOrder.next()
+    await message.answer("💰 Укажи **цену** (в рублях):")
+
+# Создание заказа: цена
+@dp.message_handler(state=CreateOrder.price)
+async def process_order_price(message: types.Message, state: FSMContext):
+    try:
+        price = int(message.text)
+    except ValueError:
+        await message.answer("❌ Введи число (например, 1000)")
+        return
+
+    async with state.proxy() as data:
+        data['price'] = price
+
+    await CreateOrder.next()
+    await message.answer("⏳ Укажи **срок выполнения** (например, 'до 15 июня'):")
+
+# Создание заказа: дедлайн
+@dp.message_handler(state=CreateOrder.deadline)
+async def process_order_deadline(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['deadline'] = message.text
+        cursor.execute('''
+        INSERT INTO orders (user_id, title, description, price, deadline)
+        VALUES (?, ?, ?, ?, ?)
+        ''', (message.from_user.id, data['title'], data['description'], data['price'], data['deadline']))
+        conn.commit()
+
     await state.finish()
+    await message.answer("✅ Заказ создан! Теперь другие студенты смогут его увидеть через /orders.")
 
-@dp.message_handler(commands=["orders"])
-async def list_orders(message: types.Message):
+# Команда /orders - просмотр заказов
+@dp.message_handler(commands=['orders'])
+async def show_orders(message: types.Message):
+    cursor.execute('SELECT * FROM orders WHERE status = "active"')
+    orders = cursor.fetchall()
+
     if not orders:
-        await message.answer("Пока нет доступных заказов.")
+        await message.answer("😕 Пока нет активных заказов.")
         return
-    text = "📋 Доступные заказы:\n"
-    for i, order in enumerate(orders):
-        if order["user_id"] != message.from_user.id:
-            text += f"{i+1}. {order['text']}\nНапиши /take_{i} чтобы взять\n\n"
-    await message.answer(text)
 
-@dp.message_handler(lambda message: message.text.startswith("/take_"))
+    for order in orders:
+        order_id, user_id, title, description, price, deadline, status = order
+        await message.answer(
+            f"📌 **{title}**\n"
+            f"📝 {description}\n"
+            f"💰 Цена: {price} руб.\n"
+            f"⏳ Срок: {deadline}\n"
+            f"🆔 ID заказа: {order_id}\n\n"
+            f"Чтобы взять заказ, напиши /take_order_{order_id}",
+            parse_mode="Markdown"
+        )
+
+# Обработка принятия заказа
+@dp.message_handler(lambda message: message.text.startswith('/take_order_'))
 async def take_order(message: types.Message):
     try:
-        index = int(message.text.split("_")[1])
-        order = orders[index]
-    except:
-        await message.answer("❌ Ошибка: заказ не найден")
+        order_id = int(message.text.split('_')[-1])
+    except ValueError:
+        await message.answer("❌ Неверный формат команды.")
         return
 
-    if message.from_user.id == order["user_id"]:
-        await message.answer("❌ Нельзя взять свой собственный заказ.")
+    cursor.execute('SELECT * FROM orders WHERE id = ? AND status = "active"', (order_id,))
+    order = cursor.fetchone()
+
+    if not order:
+        await message.answer("❌ Заказ не найден или уже закрыт.")
         return
 
-    taken_orders[message.from_user.id] = order
-    orders.pop(index)
-    await message.answer("✅ Ты взял заказ. Заказчик будет уведомлён (чат пока в разработке).")
-    
+    cursor.execute('UPDATE orders SET status = "taken" WHERE id = ?', (order_id,))
+    conn.commit()
+
+    order_creator_id = order[1]
+    await bot.send_message(
+        order_creator_id,
+        f"🎉 Твой заказ **{order[2]}** взял @{message.from_user.username}! Свяжись с ним для уточнения деталей.",
+        parse_mode="Markdown"
+    )
+
+    await message.answer(f"✅ Ты взял заказ! Заказчик получил уведомление. Его контакт: @{order_creator_id}")
+
+if __name__ == '__main__':
+    executor.start_polling(dp, skip_updates=True)
