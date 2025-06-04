@@ -36,9 +36,7 @@ orders = {}
 @dp.message(Command("start"))
 async def start(message: Message, state: FSMContext):
     if message.from_user.id not in users:
-        await message.answer("Привет! Для начала работы пройди регистрацию.
-
-Напиши своё имя и фамилию:")
+        await message.answer("Привет! Для начала работы пройди регистрацию.Напиши своё имя и фамилию:")
         await state.set_state(Registration.name)
     else:
         await message.answer("С возвращением! Выбери действие:
